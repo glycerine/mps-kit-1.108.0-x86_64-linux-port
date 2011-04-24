@@ -1,0 +1,220 @@
+README, or, the plan of attack for the x86_64 bit port of MPS, the Memory Pool System, by Ravenbrook.
+
+README Written by J. Aten (jea)
+
+
+I. Initial contact established.
+
+email
+
+from  Jason E. Aten <j.e.aten@gmail.com>
+to    Richard Brooksby <rb@ravenbrook.com>
+cc    MPS Project Staff Mailing List <mps-staff@ravenbrook.com>
+date  Wed, Oct 6, 2010 at 11:57 AM
+subject	   Re: MPS on x86_64
+
+     
+How exciting!  That is excellent news that MPS has been thoroughly
+tested in the past on UltraSPARCs and Alphas. I was worried about
+64-bit being hard, since pointer math and virtual memory interaction
+can at times be quite subtle, as I'm sure you are well aware.  Having
+the kind of care and quality that you obviously put into testing MPS
+is a big win to anyone considering using it.
+
+I would be delighted to collaborate with your colleagues on doing and
+testing a 64-bit linux port in parallel with the Mac/Windows 64-bit
+efforts.  I'm in Austin, TX, and tend to work late--such that my work
+hours that would be afternoon, evening and night time in the UK.
+
+Best regards,
+Jason
+
+
+
+On Wed, Oct 6, 2010 at 11:32 AM, Richard Brooksby <rb@ravenbrook.com> wrote:
+> On 2010-10-06, at 16:57, Jason E. Aten wrote:
+>
+>> Dear Richard,
+>>
+>> I recently found your Memory Pool System project, which is quite
+>> impressive.  I discovered through links from the CMUCL and Dylan
+>> implementations.
+>>
+>> It's appears to be a beautiful and very well engineered memory library.
+>
+> Thanks!  Feedback like this makes the years of thinking worthwhile.
+>
+>> I would like to try out the library on a modern 64-bit x86 Linux box
+>> (x86_64 linux) platform. It appears however to only have 32-bit
+>> support?
+>
+> It's been a while since we've built and tested the MPS on a 64-bit platform, but it certainly has been thoroughly tested on 64-bit architectures before now.  Ten years ago we had it successfully running on Alpha and UltraSPARCs.
+>
+> As it happens, we're about to support it on 64-bit Intel for Windows for a commercial client.  It would be great if you'd like to get involved and get it going on 64-bit Linux.  It ought not to be a very difficult task.
+>
+>> Could you offer any guidance about how to approach the task of getting
+>> MPS going on 64-bit linux?   I was impressed by the claims that new
+>> ports could be done in an hour.  An opinion that "oh, that would be
+>> really difficult!", would also be quite useful to me. :-)
+>
+> Yes, we've certainly done ports that fast in the past.  The main problem is that the build system in the master code may have rusted somewhat.
+>
+> Anyway, if you've got a bit of time this is an excellent moment to collaborate.  I'll pass you on to my colleague Richard Kistruck who's working on Windows and Mac OS 64-bit.
+>
+> Where are you, geographically?
+>
+>
+> ---
+> Richard Brooksby <rb@ravenbrook.com>
+> Director
+> Ravenbrook Limited <http://www.ravenbrook.com/>
+> PO Box 205, Cambridge CB2 1AN, United Kingdom
+> Voice: +44 777 9996245  Fax: +44 1223 750036
+>
+
+II. Simplification plan, from a much later email by Richard Kistruck, from Ravenbrook.
+
+
+I think we should start with the simplest test we can, by eliminating as much of the MPS trickery as we can, and then add it back in piece by piece.  MPS trickery:
+ - Thread support: lockli.c thlii4.c pthrdext.c
+ - Protection: protix.c protlii3.c proti3.c prmci3li.c
+ - Stack-as-ambiguous-root: ssixi3.c
+
+If you substitute the platform-independent versions of these, MPS should degrade to supporting one thread only, non-incremental behaviour.  Look at iam4cc.gmk for the relevant filenames.  Some tests should be able to run under these restrictions.
+
+// jea notes:
+
+# iam4cc.gmk uses these:
+MPMPF = lockan.c than.c vmi5.c \
+        protan.c prmcan.c ssan.c span.c
+SWPF = than.c vmi5.c protsw.c prmcan.c ssan.c
+
+# jea: so I assume that means:
+lockli.c -> lockan.c
+thlii4.c -> than.c
+pthrdext.c -> (none)  vmi5.c ?
+
+protix.c   -> protan.c
+protlii3.c -> "
+proti3.c   -> "
+prmci3li.c -> prmcan.c
+ssixi3.c   -> ssan.c
+
+
+
+now this seems to build without errors, let's try the tests:
+make -f lii64gc.gmk
+
+ssixi3.c  : has the register scanning stuff.
+
+Plan is: if this still doesn't work, then overload the malloc calls to spit out the actual addresses, and then check to see which registers or where on the stack (are we not scanning the full stack perhaps?) .
+
+lii64gc.gmk  <- is the makefile, right.
+
+
+III. Status as of 23 April 2011 : both 32-bit and 64-bit builds appear to be broken on Linux.
+
+ChangeLog:
+
+* Consulted the x86_64 ABI documentation and re-wrote  ssixi3.c  register to stack saving sequence. 64-bit builds don't even
+   try to use this stuff yet, so it is largely untested.
+* Added etrace.pl support to see visualize and contrast function call sequences on 32-bit vs 64-bit. See the Makefile for "make trace".
+* Commented out the randomization at the beginning of the test file amcss.c to make 32-bit and 64-bit more comparable.
+
+Current issues:
+
+A) 32-bit asserts
+
+/*  arena.c: lines 112 and following now read for debugging purposes: */
+
+ CHECKL(ShiftCheck(arena->zoneShift));
+  CHECKL(AlignCheck(arena->alignment));
+  /* Tract allocation must be platform-aligned. */
+  CHECKL(arena->alignment >= MPS_PF_ALIGN);
+  /* Stripes can't be smaller than pages. */
+
+  /* jea debug: this assertion is failing in 32-bit builds on Linux; comment it out so we can print out the values that follow
+ CHECKL(((Size)1 << arena->zoneShift) >= arena->alignment);                                                                                                                    
+  */
+
+  /* jea debug */
+  fflush(stdout); /* synchronize */
+  fprintf(stderr," jea assert failure details: (Size)1 << arena->zoneShift) gives: %ld\n",(Size)1 << arena->zoneShift);
+  fprintf(stderr," jea assert failure details: arena->alignment gives: %ld\n",arena->alignment);
+  fflush(stderr); /* make sure the message is output */
+
+  
+  if (arena->lastTract == NULL) {
+    CHECKL(arena->lastTractBase == (Addr)0);
+  } else {
+    CHECKL(TractBase(arena->lastTract) == arena->lastTractBase);
+  }
+  /* line 128 of arena.c */
+
+jaten@dfw32:~/pkg/mps/src/build/ci$ ./amcss
+ jea assert failure details: (Size)1 << arena->zoneShift) gives: 1048576
+ jea assert failure details: arena->alignment gives: 1048576
+ jea assert failure details: (Size)1 << arena->zoneShift) gives: 1048576
+ jea assert failure details: arena->alignment gives: 1048576
+ jea assert failure details: (Size)1 << arena->zoneShift) gives: 1048576
+ jea assert failure details: arena->alignment gives: 1048576
+ jea assert failure details: (Size)1 << arena->zoneShift) gives: 1048576
+ jea assert failure details: arena->alignment gives: 1048576
+ jea assert failure details: (Size)1 << arena->zoneShift) gives: 32768
+ jea assert failure details: arena->alignment gives: 1048576
+ jea assert failure details: (Size)1 << arena->zoneShift) gives: 32768
+ jea assert failure details: arena->alignment gives: 4096
+ jea assert failure details: (Size)1 << arena->zoneShift) gives: 32768
+ jea assert failure details: arena->alignment gives: 4096
+ jea assert failure details: (Size)1 << arena->zoneShift) gives: 32768
+ jea assert failure details: arena->alignment gives: 4096
+ jea assert failure details: (Size)1 << arena->zoneShift) gives: 32768
+ jea assert failure details: arena->alignment gives: 4096
+ jea assert failure details: (Size)1 << arena->zoneShift) gives: 32768
+ jea assert failure details: arena->alignment gives: 4096
+ jea assert failure details: (Size)1 << arena->zoneShift) gives: 32768
+
+
+on the 32-bit builds:
+
+compiler:
+gcc --version
+gcc (Ubuntu/Linaro 4.4.4-14ubuntu5) 4.4.5
+Copyright (C) 2010 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+my platform is Ubuntu 10.10 (maverick)
+uname -a
+Linux dfw32 2.6.35.1-rscloud #1 SMP Wed Aug 11 18:40:09 UTC 2010 i686 GNU/Linux
+
+
+
+
+B) 64-bit hangs forever
+
+I turned on CheckLevelDEEP and now the 32-bit linux build (Ubuntu 10.10 maverick, with gcc (Ubuntu/Linaro 4.4.4-14ubuntu5) 4.4.5 
+
+with checklevel at the deafult shallow, The 64-bit builds are never even getting to line 201 in amcss.c
+
+      /* That's roughly how often a random addr should hit the arena. */
+      for (i = 0; i < 4 * hitRatio ; i++) {
+        mps_addr_t p = rnd_addr();
+        if (mps_arena_has_addr(arena, p)) {   /* line 201: x86_64 linux build never returns from this call, even after several minutes. */
+          printf("%p is in the arena\n", p);
+        }
+      }
+
+
+The 64-bit Linux platform is Ubuntu 10.04 with some Maverick updates;
+
+jaten@virtub:~$ uname -a
+Linux virtub 2.6.32-29-generic #58-Ubuntu SMP Fri Feb 11 20:52:10 UTC 2011 x86_64 GNU/Linux
+
+jaten@virtub:~$ gcc --version
+gcc (Ubuntu 4.4.3-4ubuntu5) 4.4.3
+Copyright (C) 2009 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+

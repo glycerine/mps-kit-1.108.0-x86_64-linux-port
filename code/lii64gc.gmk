@@ -1,0 +1,47 @@
+# lii64gc.gmk: BUILD FOR LINUX/INTEL/GCC 64-bit x86_64 PLATFORM
+#
+# $Id: //info.ravenbrook.com/project/mps/version/1.108/code/lii4gc.gmk#1 $
+# Copyright (c) 2001 Ravenbrook Limited.  See end of file for license.
+
+PFM = lii64gc
+
+#THREADSRC = lockli.c thlii4.c pthrdext.c
+# try to simplify at first by putting these in
+THREADSRC = lockan.c than.c
+
+THREADLIB = -lpthread
+
+# orig:
+#PFMDEFS = -D_REENTRANT
+
+PFMDEFS = -D_REENTRANT -DCHECKLEVEL_INITIAL=CheckLevelDEEP  -DPROD_CHECKLEVEL_INITIAL=CheckLevelDEEP 
+
+
+#MPMPF = ${THREADSRC} vmli.c \
+#        protix.c protlii3.c proti3.c prmci3li.c ssixi3.c span.c
+
+# jea: add ptrace.c to get a function call log
+MPMPF = ${THREADSRC} vmli.c \
+        protan.c prmcan.c ssan.c span.c ptrace.c
+
+# jea : try again 23 april 2011 to get some tests working on x86_64
+#MPMPF = ${THREADSRC} vmli.c \
+#        protan.c prmcan.c ssixi3.c span.c
+
+
+SWPF = than.c vmli.c protsw.c prmcan.c ssan.c
+
+LIBS = -lm ${THREADLIB}
+
+
+include gc.gmk
+
+CC = gcc
+
+# Suppress some warnings (SuSE).
+#   .void: -Wpointer-arith cannot be used because the string.h header does
+#   arithmetic on void*.
+CFLAGSCOMPILER := $(subst -Wpointer-arith,,$(CFLAGSCOMPILER)) 
+
+include comm.gmk
+
