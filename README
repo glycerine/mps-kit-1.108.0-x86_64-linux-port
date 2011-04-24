@@ -2,6 +2,16 @@ README, or, the plan of attack for the x86_64 bit port of MPS, the Memory Pool S
 
 README Written by J. Aten (jea)
 
+INSTALL: To build on 32-bit or 64-bit ubuntu Linux:
+
+64-bit: cd code
+	make
+
+32-bit: cd code
+	# fix the symlink mpstd.h to point to mpstd.h-32bit instead of mpstd.h-64bit
+        rm  mpstd.h
+        ln -s mpstd.h-32bit mpstd.h
+        make
 
 I. Initial contact established.
 
